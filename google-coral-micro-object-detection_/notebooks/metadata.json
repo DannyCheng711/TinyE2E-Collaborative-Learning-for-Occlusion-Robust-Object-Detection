@@ -1,0 +1,32 @@
+{
+  "subgraph_metadata": [
+    {
+      "custom_metadata": [
+        {
+          "data": {
+            "ssd_anchors_options": {
+              "fixed_anchors_schema": {
+                "anchors": [
+                  {"width": 0.27662376191, "height": 0.64734107032},
+                  {"width": 0.85550725756, "height": 1.77290703713},
+                  {"width": 1.34005545401, "height": 3.0700760405},
+                  {"width": 2.11501002585, "height": 4.14907654168},
+                  {"width": 4.09882813018, "height": 4.28586514869}
+                ]
+              }
+            },
+            "tensors_decoding_options": {
+              "x_scale": 10.0,
+              "y_scale": 10.0,
+              "w_scale": 5.0,
+              "h_scale": 5.0,
+              "apply_exponential_on_box_size": true,
+              "num_values_per_keypoint": 4
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
