@@ -29,6 +29,7 @@ Finally, **DFL with FedAvg** was implemented to examine distributed learning sta
 ## Project Structure 
 ```text
 ├── README.md
+|-- docs                  
 ├── models                     # Model architecture
 │   ├── dethead
 │   │   ├── mvdet_test.py
@@ -110,6 +111,9 @@ Finally, **DFL with FedAvg** was implemented to examine distributed learning sta
 
 Decision-level fusion (WBF) is a practical and robust strategy for handling occlusion.
 It requires no backbone retraining, minimal calibration, and offers low communication overhead, which is ideal for **edge-based computer vision systems** such as post-disaster search and rescue.
+
+## Documentation
+- [Project Slides (PDF)](docs/tiny_collab_learning.pdf)
 
 ## Notes
 The project report details all methods, evaluation metrics, and analysis.  
