@@ -1,0 +1,53 @@
+# Coral Micro SDK (large external dependency)
+**/coralmicro/
+firmware/coralmicro/
+
+# Build directories
+**/build/
+**/cmake-build-*/
+
+# Compiled binaries and objects
+*.elf
+*.bin
+*.hex
+*.o
+*.a
+*.so
+
+# Model files (often large)
+*.tflite
+*.pb
+*.h5
+*.onnx
+
+# Image datasets
+**/images/
+**/preview_images/
+**/rgb_images/
+notebooks/images/
+notebooks/rgb_images/
+notebooks/preview_images/
+
+# Python virtual environment
+venv/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter notebook checkpoints
+**/.ipynb_checkpoints/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+.FCBak

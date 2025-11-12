@@ -236,7 +236,7 @@ namespace {
                         unsigned long msg_id, unsigned long dtime, 
                         size_t num_bboxes, size_t payload_size, size_t total_expected) {
 
-        const char* target_ip = "192.168.1.230"; // "172.20.10.4";  
+        const char* target_ip = "192.168.0.14"; // "172.20.10.4";  
         constexpr int target_port = 5005;
         
         // Create comprehensive log message
@@ -281,7 +281,7 @@ namespace {
 
     void SendTestMessageViaUDP() {
         const char* message = "Hello from Coral Dev Micro!";
-        const char* target_ip = "192.168.1.230"; // "172.20.10.4";  
+        const char* target_ip = "192.168.0.14"; // "172.20.10.4";  
         constexpr int target_port = 5005;
 
         bool success = coralmicro::UdpSend(target_ip, target_port, message, strlen(message));
@@ -296,7 +296,7 @@ namespace {
                      unsigned long msg_id, unsigned long dtime, 
                      size_t num_bboxes, size_t total_expected) {
 
-        const char* target_ip = "172.20.10.4";
+        const char* target_ip = "192.168.0.14";
         constexpr int target_port = 5005;
         
         // Create binary packet

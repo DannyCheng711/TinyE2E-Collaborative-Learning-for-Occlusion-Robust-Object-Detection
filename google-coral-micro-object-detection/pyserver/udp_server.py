@@ -5,7 +5,7 @@ import time
 import struct
 
 # Define the binary packet structure (must match MCU exactly)
-BINARY_PACKET_FORMAT = '<IIIII32s' + 'fffffB' * 80  # Little-endian format
+BINARY_PACKET_FORMAT = '<IIIII32s' + 'fffffB' * 60  # Little-endian format
 BINARY_PACKET_SIZE = struct.calcsize(BINARY_PACKET_FORMAT)
 
 def decode_binary_packet(data):

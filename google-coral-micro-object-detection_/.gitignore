@@ -1,9 +1,0 @@
-**/coralmicro
-**/build/
-.vscode/
-.FCBak
-venv/
-**/images
-**/preview_images
-**/rgb_images
-.ipynb_checkpoints/
