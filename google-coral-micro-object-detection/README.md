@@ -29,7 +29,7 @@ google-coral-micro-object-detection/
 
 ```
 
-## Firmware Configuration and Core Definitions (mcumain.cpp)
+## Firmware Configuration and Core Definitions
 
 ### MCUNet-YOLOv2 metadata
 The file yolo_mcunet_metadata.hpp provides required model constants for post-processing:
@@ -107,14 +107,14 @@ The core program consists of two components:
 - `Main()` setup routine, and 
 - `InferenceTask` FreeRTOS task that performs model execution and post-processing.
 
-### 1. Main()
+### Main()
 Initializes system components required for inference:
 - Blinks the status LED to indicate boot.
 - Turns on Wi-Fi and obtains an IP address via DHCP.
 - Creates img_mutex to protect the shared TFLM interpreter and input tensor.
 - Starts the InferenceTask with an enlarged stack size
 
-### 2. InferenceTask 
+### InferenceTask 
 
 #### Load model & validate schema
 
@@ -210,10 +210,5 @@ For each image path:
     - Call `SendBBoxViaWiFiBinary(bbox_list, image_filename, wifi_msg_id, dtime, num_bboxes_output, rgb_files.size())`;
 	- This constructs a BinaryDetectionPacket and sends it over UDP to the host.
 
-## Workflow Summary (mcumain.cpp)
-
-```text
-Flash .rgb → Load Image → Copy to Tensor →
-TFLM.Invoke() → Output Tensor → DecodeBBoxes →
-NMS → BinaryPacket → UDP Wi-Fi → Host
-```
+## Workflow Summary 
+![MCU Inference Workflow](../docs/mcu_workflow.svg)

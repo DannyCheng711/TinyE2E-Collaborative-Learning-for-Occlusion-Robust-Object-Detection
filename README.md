@@ -168,7 +168,7 @@ Detailed MCU-side behaviour, feature descriptions, and example logs are provided
 - Each additional view added ≈6 KB of Wi-Fi payload; packet loss appeared near the 1500 B MTU limit.
 - **DFL (FedAvg)** achieved stable convergence without central coordination but exhibited high absolute loss (~23 800) under non-iid data.
 
-### Conclusion
+## Conclusion
 
 Decision-level fusion (WBF) is a practical and robust strategy for handling occlusion.
 It requires no backbone retraining, minimal calibration, and offers low communication overhead, which is ideal for **edge-based computer vision systems** such as post-disaster search and rescue.
