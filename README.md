@@ -29,7 +29,7 @@ Finally, **DFL with FedAvg** was implemented to examine distributed learning sta
 ## Project Structure 
 ```text
 ├── README.md
-|-- docs                  
+├── docs                  
 ├── models                     # Model architecture
 │   ├── dethead
 │   │   ├── mvdet_test.py
@@ -70,7 +70,7 @@ Finally, **DFL with FedAvg** was implemented to examine distributed learning sta
 └── run_vocmain.sh
 ```
 
-## Usage 
+## Model Experiment Usage 
 - **Pretraining:** 
     ```bash
     python -m vocmain.main
@@ -97,6 +97,67 @@ Finally, **DFL with FedAvg** was implemented to examine distributed learning sta
     ```
     - Runs a two-node FedAvg implementation for decentralised training.
 
+## MCU Deployment Usage (Coral Dev Board Micro)
+
+### Clone the Repository (including Coral Micro SDK)
+```bash
+git clone https://github.com/DannyCheng711/Individual-Project.git
+cd Individual-Project
+git clone https://github.com/google-coral/coralmicro.git firmware/coralmicro
+```
+
+### Directory Overview
+```text
+
+google-coral-micro-object-detection/
+├── firmware/
+│   ├── coralmicro/                  # Coral Micro SDK (RTOS, drivers, Wi-Fi stack, build system)
+│   └── object-detection-http/       # MCU deployment code (currently being refactored)
+├── notebooks/
+│   ├── generate_rgb_image.ipynb     # Preprocesses inference images into .rgb format with scaling considerations
+│   └── tflite-runtime-test-object-detection.ipynb  
+│                                    # Validates TFLite runtime behaviour and checks inference logic
+└── pyserver/
+    └── udp_server.py                # Host-side Python UDP server for receiving bounding-box messages from MCUs
+
+```
+
+### Build Firmware
+```bash
+cd firmware/object-detection-http
+rm -rf build
+cmake -B build/ -S .
+make -C build -j4
+```
+You should see output ending with a compiled image:
+```bash
+build/
+└── coralmicro-app    # Firmware ELF to flash onto the Coral Dev Board Micro
+```
+
+### Flash the Coral Dev Board Micro
+```bash
+cd firmware/object-detection-http
+python3 ../coralmicro/scripts/flashtool.py \
+  --build_dir build/ \
+  --elf_path build/coralmicro-app \
+  --wifi_ssid "YOUR_SSID" \
+  --wifi_psk "YOUR_PASSWORD"
+```
+
+This step contains flashing firmware, writing Wi-Fi credentials and rebooting into application mode. If successful, your device should connect to the network and wait for incoming UDP messages.
+
+### Start the Host-Side Python UDP Server
+Navigate to your server folder:
+```bash
+cd pyserver
+python -m udp_server
+```
+This server listens for MCU detections and prints or logs incoming messages such as bounding boxes, scores, and latency.
+
+### Additional MCU Documentation
+Detailed MCU-side behaviour, feature descriptions, and example logs are provided in [google-coral-micro-object-detection/README.md￼](google-coral-micro-object-detection/README.md)
+
 
 ## Key Findings
 - **MCUNet + YOLOv2** achieved the best mAP among lightweight baselines (0.2575) with excellent memory efficiency.
@@ -118,8 +179,6 @@ It requires no backbone retraining, minimal calibration, and offers low communic
 ## Notes
 The project report details all methods, evaluation metrics, and analysis.  
 Due to project constraints, some scripts are experimental prototypes and may require adaptation for different environments.  
-
-> The Coral Dev Board Micro deployment code (`google-coral-micro-object-detection/`) is currently under code cleaning and reconstruction to improve readability, modularity, and compatibility with future firmware updates.
 
 ---
 
