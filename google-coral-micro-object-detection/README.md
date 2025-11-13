@@ -1,53 +1,219 @@
-# Google Coral Dev Board Micro Example: Object Detection
+# Google Coral Dev Board Micro Deployment
 
-This repository contains example code for gathering image data from the Coral Micro board, training an object detection model (MobileNetV2-SSD), compiling the model for the Google TPU, and deploying the model back to the Coral Micro.
+This directory contains the firmware and utilities required to deploy the MCUNet-YOLOv2 model on the Google Coral Dev Board Micro.  
+It includes preprocessing notebooks, inference firmware, and a Python UDP server for receiving detection results.
 
-Bounding box data is streamed over the USB and UART ports in JSON format. This allows you to parse the data on another platform to, for example, [control a robot](https://github.com/ShawnHymel/xrp-object-detection).
+## Key Features
 
-> **IMPORTANT!** The firmware examples found in this repository for the Google Coral Micro will compile only under Linux. This was tested with Ubuntu 20.04.
+- **INT8 quantized MCUNet–YOLOv2 inference** running fully on Coral Dev Board Micro  
+- **TensorFlow Lite Micro** deployment with a 1 MB tensor arena  
+- **Custom post-processing pipeline**: YOLO decoding + Non-Maximum Suppression (NMS)  
+- **Binary UDP streaming** of detection packets (zero-copy, fixed-layout structs)  
+- **FreeRTOS task-based design** with mutex-protected shared interpreter state  
+- **Image preprocessing utilities** (RGB converter notebook)  
+- **Host-side Python UDP server** for real-time bounding-box reception and visualization 
 
-## Getting Started
+## Project Structure
+```text
 
-Follow the readme in [firmware/image-collection-http](https://github.com/ShawnHymel/google-coral-micro-object-detection/tree/master/firmware/image-collection-http) to load the image collection firmware onto the Coral Micro. Collect images of your objects in their natural environment. I recommend at least 200 images of each object.
-
-Use a tool like [labelImg](https://github.com/HumanSignal/labelImg) or [makesense.ai](https://www.makesense.ai/) to label your images. Save the bounding box information in *Pascal VOC* format. Save your images and annotations in the following format, archived in a file named *dataset.zip*:
-
-```
-dataset.zip
-├── Annotations/
-│   ├── image.01.xml
-│   ├── image.02.xml
-│   ├── ...
-└── images/
-    ├── image.01.jpg
-    ├── image.02.jpg
-    └── ...
-```
-
-Open the [MediaPipe Object Detection Learning notebook](https://github.com/ShawnHymel/google-coral-micro-object-detection/blob/master/notebooks/mediapipe-object-detection-learning.ipynb) and upload your *dataset.zip* to the filesystem. Run through the cells to train and export your object detection model. Your model and metadata files will be downloaded in a file named *exported_models.zip*.
-
-You can test your model by uploading the *model.tflite* (or *model_int8.tflite*), *metadata.json*, and one of your image files to the [TFLite runtime test notebook](https://github.com/ShawnHymel/google-coral-micro-object-detection/blob/master/notebooks/tflite-runtime-test-object-detection.ipynb). Rename `IMAGE_PATH` to your uploaded image. Run through the cells to ensure that object detection works correctly.
-
-Replace the files *model_int8_edgetpu.tflite* and *metadata.hpp* found in [firmware/object-detection-http](https://github.com/ShawnHymel/google-coral-micro-object-detection/tree/master/firmware/object-detection-http) with the files you downloaded in *exported_models.zip*. Follow the steps in the [object detection readme](https://github.com/ShawnHymel/google-coral-micro-object-detection/blob/master/firmware/object-detection-http/README.md) to compile and flash the inferencing firmware to your Coral Micro.
-
-Once the Coral Micro starts running your code, open a browser and navigate to [http://10.10.10.1](http://10.10.10.1/) to see the camera input with a bounding box overlay. Note that this seems to only work in Linux (due to lack of Windows drivers for Ethernet-over-USB). It has not been tested on macOS.
-
-![Object detection example in browser](images/browser-basket-and-target-bboxes.png)
-
-## License
-
-Unless otherwise specified, all code is licensed under the following license:
+google-coral-micro-object-detection/
+├── firmware/
+│   ├── coralmicro/                  # Coral Micro SDK (RTOS, drivers, Wi-Fi stack, build system)
+│   └── object-detection-http/       # MCU deployment code (currently being refactored)
+├── notebooks/
+│   ├── generate_rgb_image.ipynb     # Preprocesses inference images into .rgb format with scaling considerations
+│   └── tflite-runtime-test-object-detection.ipynb  
+│                                    # Validates TFLite runtime behaviour and checks inference logic
+└── pyserver/
+    └── udp_server.py                # Host-side Python UDP server for receiving bounding-box messages from MCUs
 
 ```
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+## Firmware Configuration and Core Definitions (mcumain.cpp)
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+### MCUNet-YOLOv2 metadata
+The file yolo_mcunet_metadata.hpp provides required model constants for post-processing:
+
+- Anchor box shapes (anchor_widths, anchor_heights)
+- grid_size 
+- image_size (input image resolution)
+- apply_exp_scaling flag for decoding YOLO width/height offsets
+
+### Tensor Arena (1 MB)
+```cpp
+constexpr int kTensorArenaSize = 1024 * 1024; // 1MB
+STATIC_TENSOR_ARENA_IN_SDRAM(tensor_arena, kTensorArenaSize);
+```
+
+- The tensor arena is a single static memory region used by TensorFlow Lite Micro for:
+    - Input / output tensors
+    - Intermediate activations
+    - Scratch buffers and temporary workspaces
+- 1 MB is selected as an upper bound that fits within the MCU’s SDRAM while providing enough headroom for:
+    - The quantized MCUNet-YOLOv2 model (≈700 KB including weights & activations)
+    - All intermediate tensors and operator scratch space
+- `arena_used_bytes()` is printed at startup to verify actual memory utilisation.
+ 
+### Semaphore for inference
+```cpp
+static SemaphoreHandle_t img_mutex;
+```
+`img_mutex` is a FreeRTOS mutex used to protect: 
+1. The shared input tensor / image buffer and 
+2. The TFLM interpreter state
+
+This ensures that only one context can modify the tensor arena at a time and prevents race conditions if additional tasks are added.
+
+### Binary detection packet format (Wi-Fi)
+```cpp
+#pragma pack(push, 1)
+struct BinaryBBox {
+    float xmin, ymin, xmax, ymax, score;
+    uint8_t id;
+};
+
+struct BinaryDetectionPacket {
+    uint32_t msg_id;
+    uint32_t total_expected;
+    uint32_t dtime;
+    uint32_t num_bboxes;
+    uint32_t payload_size;
+    char image_filename[32];
+    BinaryBBox bboxes[60]; // max_bboxes
+};
+#pragma pack(pop)
+```
+
+`BinaryBBox` stores one bounding box in a compact, fixed layout:
+- Pixel coordinates (xmin, ymin, xmax, ymax)
+- Confidence score
+- id = class ID as an 8-bit integer
+
+`BinaryDetectionPacket` (UDP message):
+- Message metadata (msg_id, dtime, num_bboxes, etc.)
+- A fixed-length filename
+- Up to 60 detections (Payload)
+
+#pragma pack(push, 1) removes padding so the struct’s memory layout matches the exact byte sequence sent over UDP. This ensures deterministic parsing on the Python host.
+
+Packets are sent via:
+```cpp
+UdpSend(target_ip, target_port, (char*)&packet, sizeof(packet));
+```
+
+## Real-Time Inference Pipeline (InferenceTask)
+
+The core program consists of two components: 
+- `Main()` setup routine, and 
+- `InferenceTask` FreeRTOS task that performs model execution and post-processing.
+
+### 1. Main()
+Initializes system components required for inference:
+- Blinks the status LED to indicate boot.
+- Turns on Wi-Fi and obtains an IP address via DHCP.
+- Creates img_mutex to protect the shared TFLM interpreter and input tensor.
+- Starts the InferenceTask with an enlarged stack size
+
+### 2. InferenceTask 
+
+#### Load model & validate schema
+
+1. Load the quantized model from flash (/yolo_mcunet_model.tflite).
+2. Parses it with `tflite::GetModel()`
+3. checks that `model_data->version() == TFLITE_SCHEMA_VERSION`. 
+    - If mismatched, the task safely suspends using vTaskSuspend(nullptr).
+
+#### Register TensorFlow Lite Micro ops
+
+Only the operators actually used by MCUNet-YOLOv2 are registered.
+
+```cpp
+tflite::MicroMutableOpResolver<16> resolver;
+resolver.AddAdd();
+resolver.AddPad();
+resolver.AddConv2D();
+resolver.AddDepthwiseConv2D();
+resolver.AddReshape();
+resolver.AddAveragePool2D();
+resolver.AddLogistic(); // For sigmoid activation
+resolver.AddMul();
+resolver.AddConcatenation();
+resolver.AddSpaceToDepth();
+resolver.AddShape();
+resolver.AddStridedSlice(); 
+resolver.AddPack();
+```
+
+#### Initialize the TFLM interpreter & tensors
+```cpp
+tflite::MicroInterpreter interpreter(
+    model_data, resolver, tensor_arena, kTensorArenaSize, &error_reporter
+);
+interpreter.AllocateTensors();
+```
+
+The interpreter is the TFLM runtime object that:
+- Manages the tensor arena
+- Allocates input/output/intermediate tensors
+- Invokes each operator in order during Invoke()
+
+#### Inference loop
+
+Reads `.rgb` images stored in flash (`examples/images/`) and runs inference on each image:
+
+For each image path:
+
+1. Load RGB data: 
+    - Read the raw RGB bytes into RAM (size = img_width * img_height * 3).
+
+2. Acquire mutex
+    - `xSemaphoreTake(img_mutex, pdMS_TO_TICKS(1000))`
+    - Ensures exclusive access to the input tensor and interpreter.
+
+3. Copy image into input tensor
+    - For `kTfLiteInt8` models, the raw quantized bytes are copied directly into the input tensor buffer:
+    ```cpp
+    std::memcpy(
+        tflite::GetTensorData<int8_t>(input_tensor),
+        image_data.data(),
+        image_data.size()
+    );
+    ```
+
+4. Execute inference
+    - Record `inference_start` timestamp.
+	- Turn on `Led::kUser` to indicate an active inference.
+	- Call `interpreter.Invoke()`.
+
+5. Decode bounding boxes
+    - Get raw output pointer:
+        ```cpp
+        uint8_t* raw_output = output_tensor->data.uint8;
+        ```
+    -  Call `DecodeBBoxes(raw_output, bbox_list, output_scale, output_zero_point)` to:
+        - Dequantize logits
+        - Apply sigmoid/exp
+        - Convert from grid/anchor space to pixel coordinates
+        - Filter by score threshold
+        - Release `img_mutex`
+
+6. Post-processing: Non-Maximum Suppression (NMS)
+    - Sort bbox_list by score (descending).
+    - For each pair of boxes with the same class ID:
+	    - Compute IoU via CalculateIOU.
+	    - If IoU > `iou_threshold`, keep the higher-score box and drop the other.
+	- Truncate to at most `max_bboxes` detections.
+
+7. Log per-image metrics
+
+8. Send binary packet via Wi-Fi
+    - Call `SendBBoxViaWiFiBinary(bbox_list, image_filename, wifi_msg_id, dtime, num_bboxes_output, rgb_files.size())`;
+	- This constructs a BinaryDetectionPacket and sends it over UDP to the host.
+
+## Workflow Summary (mcumain.cpp)
+
+```text
+Flash .rgb → Load Image → Copy to Tensor →
+TFLM.Invoke() → Output Tensor → DecodeBBoxes →
+NMS → BinaryPacket → UDP Wi-Fi → Host
 ```

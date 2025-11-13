@@ -106,7 +106,7 @@ cd Individual-Project
 git clone https://github.com/google-coral/coralmicro.git firmware/coralmicro
 ```
 
-### Directory Overview
+### Directory Structure
 ```text
 
 google-coral-micro-object-detection/

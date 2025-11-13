@@ -21,7 +21,6 @@
 #include "third_party/tflite-micro/tensorflow/lite/micro/micro_interpreter.h"
 #include "third_party/tflite-micro/tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
-// #include "metadata.hpp"
 #include "yolo_mcunet_metadata.hpp"
 
 #define DEBUG 1
@@ -99,11 +98,6 @@ namespace {
     float CalculateIOU(BBox* bbox1, BBox* bbox2);
     void DecodeBBoxes(const uint8_t* raw_output, 
         std::vector<std::vector<float>>& bbox_list, float output_scale, int output_zero_point );
-    
-    bool SendBBoxViaWiFi(const char* json_data, const char* image_filename, 
-        unsigned long msg_id, unsigned long dtime, 
-        size_t num_bboxes, size_t payload_size, size_t total_expected);
-
     bool SendBBoxViaWiFiBinary(const std::vector<std::vector<float>>& bbox_list, const char* image_filename, 
         unsigned long msg_id, unsigned long dtime, 
         size_t num_bboxes, size_t total_expected);
@@ -232,66 +226,6 @@ namespace {
     }
 
     // Add this function before InferenceTask
-    bool SendBBoxViaWiFi(const char* json_data, const char* image_filename, 
-                        unsigned long msg_id, unsigned long dtime, 
-                        size_t num_bboxes, size_t payload_size, size_t total_expected) {
-
-        const char* target_ip = "192.168.0.14"; // "172.20.10.4";  
-        constexpr int target_port = 5005;
-        
-        // Create comprehensive log message
-        char wifi_log_buf[1024];
-        int json_len = snprintf(wifi_log_buf, sizeof(wifi_log_buf),
-            "{\"msg_id\":%lu,\"total_expected\":%lu,\"image\":\"%s\",\"dtime\":%lu,\"num_bboxes\":%lu,\"payload_size\":%lu,\"bboxes\":%s}",
-            msg_id, (unsigned long)total_expected, image_filename, dtime,
-            (unsigned long)num_bboxes, (unsigned long)payload_size,
-            json_data
-        );
-
-        printf("=== DEBUG: JSON TO SEND ===\r\n");
-        printf("JSON Length: %d bytes\r\n", json_len);
-        printf("Buffer Size: %lu bytes\r\n", (unsigned long)sizeof(wifi_log_buf));
-        
-        if (json_len >= sizeof(wifi_log_buf)) {
-            printf("ERROR: JSON TRUNCATED! Need %d bytes but have %lu\r\n", 
-                json_len, (unsigned long)sizeof(wifi_log_buf));
-        }
-        
-        printf("JSON Content:\r\n%s\r\n", wifi_log_buf);
-        printf("===========================\r\n");
-
-
-
-
-        // Send over Wi-Fi
-        bool success = coralmicro::UdpSend(target_ip, target_port, wifi_log_buf, strlen(wifi_log_buf));
-        
-        if (success) {
-            wifi_msg_sent++;
-            printf("WiFi msg sent: ID=%lu, image=%s, size=%lu bytes\r\n", 
-                msg_id, image_filename, (unsigned long)strlen(wifi_log_buf));
-        } else {
-            wifi_send_errors++;
-            printf("ERROR: WiFi send failed for msg ID=%lu, image=%s\r\n", 
-                msg_id, image_filename);
-        }
-        
-        return success;
-    }
-
-    void SendTestMessageViaUDP() {
-        const char* message = "Hello from Coral Dev Micro!";
-        const char* target_ip = "192.168.0.14"; // "172.20.10.4";  
-        constexpr int target_port = 5005;
-
-        bool success = coralmicro::UdpSend(target_ip, target_port, message, strlen(message));
-        if (success) {
-            printf("UDP message sent successfully!\r\n");
-        } else {
-            printf("Failed to send UDP message\r\n");
-        }
-    }
-
     bool SendBBoxViaWiFiBinary(const std::vector<std::vector<float>>& bbox_list, const char* image_filename, 
                      unsigned long msg_id, unsigned long dtime, 
                      size_t num_bboxes, size_t total_expected) {
@@ -613,34 +547,14 @@ namespace {
 
                 printf("=========================\r\n\r\n");
 
-                // // Convert to JSON string
-                
-                // std::string bbox_string = "[";
-                // for (size_t i = 0; i < num_bboxes_output; ++i) {
-                //     int class_id = static_cast<int>(bbox_list[i][4]);
-                //     char bbox_buf[128];
-                //     snprintf(bbox_buf, sizeof(bbox_buf),
-                //         "{\"id\": %d, \"score\": %.2f, \"xmin\": %.1f, \"ymin\": %.1f, \"xmax\": %.1f, \"ymax\": %.1f}",
-                //         class_id, bbox_list[i][5], bbox_list[i][0], bbox_list[i][1], bbox_list[i][2], bbox_list[i][3]);
-                //     bbox_string += bbox_buf;
-                //     if (i != num_bboxes_output - 1) {
-                //         bbox_string += ", ";
-                //     }
-                // }
-                // bbox_string += "]";
-
                 // Add increment message ID
                 wifi_msg_id++;
 
                 // Calculate payload characteristics
-                // size_t payload_size = bbox_string.size();
                 const char* image_filename = strrchr(img_path.c_str(), '/');
                 image_filename = image_filename ? image_filename + 1 : img_path.c_str();
 
                 // Send via Wi-Fi with image filename
-                // SendBBoxViaWiFi(bbox_string.c_str(), image_filename, wifi_msg_id, 
-                //                dtime, num_bboxes_output, payload_size, rgb_files.size());
-               
                 SendBBoxViaWiFiBinary(bbox_list, image_filename, wifi_msg_id, dtime, 
                     num_bboxes_output, rgb_files.size());
 
@@ -751,57 +665,6 @@ void Blink(unsigned int num, unsigned int delay_ms) {
 
 }
 
-// void Main() {
-//   // Blink to show board booted
-//   Blink(3, 300);
-//   printf("Starting Coral Dev Board Micro Wi-Fi + UDP test...\r\n");
-
-//   // Try to connect to Wi-Fi
-//   printf("Turning on Wi-Fi...\r\n");
-//   if (!WiFiTurnOn(/*default_iface=*/true)) {
-//     printf("ERROR: Failed to turn on Wi-Fi\r\n");
-//     Blink(5, 200);
-//     return;
-//   }
-
-//   printf("Connecting to Wi-Fi...\r\n");
-//   if (!WiFiConnect()) {
-//     printf("ERROR: Failed to connect to Wi-Fi\r\n");
-//     Blink(4, 200);
-//     return;
-//   }
-
-//   // Success!
-//   const auto& our_ip_addr = WiFiGetIp();
-//   if (our_ip_addr.has_value()) {
-//     printf("DHCP succeeded, our IP is %s.\r\n", our_ip_addr.value().c_str());
-//   } else {
-//     printf("We didn't get an IP via DHCP, not progressing further.\r\n");
-//     return;
-//   }
-
-//   // Send UDP test message
-//   SendTestMessageViaUDP();
-
-//   // Blink slowly to indicate success
-//   while (true) {
-//     Blink(1, 500);  // Single blink every 1 sec
-//     vTaskDelay(pdMS_TO_TICKS(1000));
-//   }
-// }
-    
-// test
-/*
-void Main() {
-    printf("Starting Coral Dev Board Micro demo...\n");
-
-    while (true) {
-        printf("Hello from Coral Dev Micro!\n");
-        Blink(1, 500); // 1 blink, 500 ms each ON/OFF
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second
-    }
-}
-*/
 
 }  // namespace
 }  // namespace coralmicro
